@@ -20,7 +20,9 @@ function App() {
     connectError,
     isConnecting,
     connectToPeer,
-    initializePeer
+    initializePeer,
+    currentFileReception,
+    transferError
   } = usePeerConnection();
 
   const {
@@ -193,6 +195,28 @@ function App() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {currentFileReception && (
+            <div className="mt-4">
+              <div className="text-sm text-gray-600">
+                Receiving: {currentFileReception.name}
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2.5 mt-2">
+                <div 
+                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                  style={{ 
+                    width: `${(currentFileReception.receivedChunks / currentFileReception.totalChunks) * 100}%`
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {transferError && (
+            <div className="mt-4 text-sm text-red-500">
+              {transferError}
             </div>
           )}
         </div>

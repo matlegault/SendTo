@@ -1,17 +1,18 @@
 import { useState } from 'react';
 import { FileTransfer, PeerConnection } from '../types';
 
-const CHUNK_SIZE = 262144; // 256KB chunks
+const CHUNK_SIZE = 8192; // 8KB chunks - even smaller for better reliability
 
 interface FileMetadata {
   fileName: string;
   fileSize: number;
   totalChunks: number;
   from: string;
+  fileType: string;
 }
 
 interface FileChunkData {
-  chunks: (ArrayBuffer | null)[];
+  chunks: string[];  // Changed to string[] for base64 chunks
   metadata: FileMetadata;
   receivedChunks: number;
 }
@@ -33,50 +34,58 @@ export function useFileTransfer() {
 
     const reader = new FileReader();
     reader.onload = async () => {
-      const arrayBuffer = reader.result as ArrayBuffer;
+      if (!(reader.result instanceof ArrayBuffer)) return;
+
+      const arrayBuffer = reader.result;
+      const uint8Array = new Uint8Array(arrayBuffer);
       const totalChunks = Math.ceil(arrayBuffer.byteLength / CHUNK_SIZE);
       
-      peers.forEach(peer => {
+      for (const peer of peers) {
         try {
-          // Send file metadata first
-          const metadata = {
-            type: 'file-metadata',
+          // Send metadata first
+          const metadata: FileMetadata = {
             fileName: selectedFile.name,
             fileSize: selectedFile.size,
             totalChunks,
+            fileType: selectedFile.type,
             from: peer.connection.peer
           };
           
-          peer.connection.send(metadata);
+          peer.connection.send({ type: 'file-metadata', metadata });
 
-          // Send chunks
+          // Send chunks with sequence verification
           for (let i = 0; i < totalChunks; i++) {
-            const chunk = arrayBuffer.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+            const start = i * CHUNK_SIZE;
+            const end = Math.min(start + CHUNK_SIZE, arrayBuffer.byteLength);
+            const chunk = uint8Array.slice(start, end);
+            
+            // Convert chunk to base64
+            const base64Chunk = btoa(
+              String.fromCharCode.apply(null, Array.from(chunk))
+            );
+
             const chunkData = {
               type: 'file-chunk',
               fileName: selectedFile.name,
               chunkIndex: i,
               totalChunks,
-              data: chunk
+              chunk: base64Chunk
             };
 
-            // Add a small delay between chunks to prevent overwhelming the connection
-            setTimeout(() => {
-              try {
-                peer.connection.send(chunkData);
-              } catch (error) {
-                console.error(`Error sending chunk ${i}:`, error);
-              }
-            }, i * 10); // 10ms delay between chunks
+            await new Promise<void>((resolve) => {
+              peer.connection.send(chunkData);
+              setTimeout(resolve, 100); // Increased delay between chunks
+            });
           }
-        } catch (error) {
-          console.error('Error initiating file transfer:', error);
-        }
-      });
-    };
 
-    reader.onerror = (error) => {
-      console.error('Error reading file:', error);
+          peer.connection.send({
+            type: 'file-complete',
+            fileName: selectedFile.name
+          });
+        } catch (error) {
+          console.error('Error sending file to peer:', error);
+        }
+      }
     };
 
     reader.readAsArrayBuffer(selectedFile);
@@ -86,11 +95,9 @@ export function useFileTransfer() {
   const handleIncomingFile = (data: any) => {
     try {
       if (data.type === 'file-metadata') {
-        const metadata = data as FileMetadata;
-        
-        // Initialize new file transfer
+        const metadata = data.metadata as FileMetadata;
         fileTransfers.set(metadata.fileName, {
-          chunks: new Array(metadata.totalChunks).fill(null),
+          chunks: new Array(metadata.totalChunks),
           metadata,
           receivedChunks: 0
         });
@@ -106,35 +113,36 @@ export function useFileTransfer() {
         const transfer = fileTransfers.get(data.fileName);
         if (!transfer) return;
 
-        // Store the chunk
-        transfer.chunks[data.chunkIndex] = data.data;
+        // Store base64 chunk
+        transfer.chunks[data.chunkIndex] = data.chunk;
         transfer.receivedChunks++;
 
-        // Check if we have all chunks
         if (transfer.receivedChunks === transfer.metadata.totalChunks) {
-          // Verify all chunks are present
-          const allChunksReceived = transfer.chunks.every(chunk => chunk !== null);
+          const allChunksReceived = transfer.chunks.every(chunk => chunk !== undefined);
           
           if (allChunksReceived) {
-            // Combine all chunks into final file
-            const fileBlob = new Blob(transfer.chunks, { 
-              type: 'application/octet-stream' 
+            // Convert base64 chunks back to Uint8Array and combine
+            const uint8Arrays = transfer.chunks.map(base64Chunk => {
+              const binaryString = atob(base64Chunk);
+              const bytes = new Uint8Array(binaryString.length);
+              for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+              }
+              return bytes;
             });
 
-            // Create download
-            const url = URL.createObjectURL(fileBlob);
+            const blob = new Blob(uint8Arrays, { type: transfer.metadata.fileType });
+            
+            const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = data.fileName;
+            a.download = transfer.metadata.fileName;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
-            
-            // Cleanup
             URL.revokeObjectURL(url);
+            
             fileTransfers.delete(data.fileName);
-
-            // Update UI
             setIncomingFiles(prev => 
               prev.map(file => 
                 file.name === data.fileName ? { ...file, accepted: true } : file

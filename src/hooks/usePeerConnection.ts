@@ -1,9 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Peer } from 'peerjs';
 import { PeerConnection, ConnectionStatus } from '../types';
 import { generatePeerId } from '../utils/nameGenerator';
 import { PEER_CONFIG } from '../config/peer';
 import { RoomService } from '../services/roomService';
+
+interface FileTransfer {
+  name: string;
+  size: number;
+  type: string;
+  data: ArrayBuffer;
+}
 
 export function usePeerConnection() {
   const [myPeerId, setMyPeerId] = useState<string>('');
@@ -12,6 +19,8 @@ export function usePeerConnection() {
   const [browserSupported, setBrowserSupported] = useState(true);
   const [connectError, setConnectError] = useState('');
   const [isConnecting, setIsConnecting] = useState(false);
+  const [transferError, setTransferError] = useState('');
+  const [currentFileReception, setCurrentFileReception] = useState<FileTransfer | null>(null);
 
   const peerInstance = useRef<any>(null);
   const reconnectTimeout = useRef<NodeJS.Timeout>();
@@ -268,6 +277,127 @@ export function usePeerConnection() {
     }
   };
 
+  const handleFileTransfer = useCallback((conn: DataConnection, file: File) => {
+    const reader = new FileReader();
+    
+    reader.onload = async () => {
+      if (reader.result instanceof ArrayBuffer) {
+        const fileTransfer: FileTransfer = {
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          data: reader.result
+        };
+        
+        try {
+          // Send file metadata first
+          conn.send({
+            type: 'file-metadata',
+            name: file.name,
+            size: file.size,
+            fileType: file.type
+          });
+
+          // Send the actual file data in chunks
+          const chunkSize = 16384; // 16KB chunks
+          const totalChunks = Math.ceil(reader.result.byteLength / chunkSize);
+          
+          for (let i = 0; i < totalChunks; i++) {
+            const start = i * chunkSize;
+            const end = Math.min(start + chunkSize, reader.result.byteLength);
+            const chunk = reader.result.slice(start, end);
+            
+            conn.send({
+              type: 'file-chunk',
+              chunk,
+              chunkIndex: i,
+              totalChunks,
+              fileName: file.name
+            });
+
+            // Add a small delay between chunks to prevent overwhelming the connection
+            await new Promise(resolve => setTimeout(resolve, 10));
+          }
+
+          // Send completion message
+          conn.send({
+            type: 'file-complete',
+            fileName: file.name
+          });
+        } catch (error) {
+          console.error('Error sending file:', error);
+          setTransferError(`Failed to send file: ${error.message}`);
+        }
+      }
+    };
+
+    reader.onerror = () => {
+      setTransferError('Failed to read file');
+    };
+
+    reader.readAsArrayBuffer(file);
+  }, []);
+
+  const handleIncomingData = useCallback((data: any) => {
+    if (typeof data === 'object' && data.type) {
+      switch (data.type) {
+        case 'file-metadata': {
+          // Initialize file reception
+          const fileReception = {
+            name: data.name,
+            size: data.size,
+            type: data.fileType,
+            chunks: [],
+            receivedChunks: 0,
+            totalChunks: Math.ceil(data.size / 16384)
+          };
+          setCurrentFileReception(fileReception);
+          break;
+        }
+        
+        case 'file-chunk': {
+          setCurrentFileReception(prev => {
+            if (!prev || prev.name !== data.fileName) return prev;
+            
+            const newChunks = [...prev.chunks];
+            newChunks[data.chunkIndex] = data.chunk;
+            
+            return {
+              ...prev,
+              chunks: newChunks,
+              receivedChunks: prev.receivedChunks + 1
+            };
+          });
+          break;
+        }
+        
+        case 'file-complete': {
+          setCurrentFileReception(prev => {
+            if (!prev || prev.name !== data.fileName) return prev;
+            
+            // Combine all chunks into a single file
+            const fileBlob = new Blob(prev.chunks, { type: prev.type });
+            
+            // Create download link
+            const url = URL.createObjectURL(fileBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = prev.name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            return null; // Clear the reception state
+          });
+          break;
+        }
+        
+        // ... handle other message types ...
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (!navigator.mediaDevices || !window.RTCPeerConnection) {
       setBrowserSupported(false);
@@ -315,6 +445,14 @@ export function usePeerConnection() {
     };
   }, [myPeerId]);
 
+  useEffect(() => {
+    if (peerInstance.current) {
+      peerInstance.current.on('connection', (conn) => {
+        conn.on('data', handleIncomingData);
+      });
+    }
+  }, [handleIncomingData]);
+
   return {
     myPeerId,
     peers,
@@ -323,6 +461,9 @@ export function usePeerConnection() {
     connectError,
     isConnecting,
     connectToPeer,
-    initializePeer
+    initializePeer,
+    handleFileTransfer,
+    transferError,
+    currentFileReception
   };
 }
