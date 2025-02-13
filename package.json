@@ -14,7 +14,8 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "peerjs": "^1.5.2",
-    "nanoid": "^5.0.6"
+    "nanoid": "^5.0.6",
+    "unique-names-generator": "^4.7.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Peer } from 'peerjs';
-import { nanoid } from 'nanoid';
-import { Share2, Users, FileUp, Download, AlertCircle } from 'lucide-react';
+import { Share2, Users, FileUp, Download, AlertCircle, Copy, Check, RefreshCw } from 'lucide-react';
+import { generatePeerId } from './utils/nameGenerator';
 
 interface PeerConnection {
   id: string;
@@ -22,38 +22,51 @@ function App() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<string>('initializing');
   const [browserSupported, setBrowserSupported] = useState(true);
+  const [targetPeerId, setTargetPeerId] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [connectError, setConnectError] = useState('');
+  const [isConnecting, setIsConnecting] = useState(false);
   const peerInstance = useRef<any>(null);
-  const broadcastChannel = useRef<BroadcastChannel | null>(null);
-  const connectionAttempts = useRef<{[key: string]: number}>({});
   const reconnectTimeout = useRef<NodeJS.Timeout>();
+  const seenPeers = useRef<Set<string>>(new Set());
+  const discoveryInterval = useRef<NodeJS.Timeout>();
 
-  useEffect(() => {
-    // Check for WebRTC support
-    if (!navigator.mediaDevices || !window.RTCPeerConnection) {
-      setBrowserSupported(false);
-      setConnectionStatus('error');
-      return;
-    }
+  const initializePeer = () => {
+    try {
+      if (peerInstance.current) {
+        peerInstance.current.destroy();
+      }
 
-    const initializePeer = () => {
-      // Initialize peer with a random ID and more robust configuration
-      const peer = new Peer(nanoid(10), {
-        debug: 1, // Reduced debug level
+      const peerId = generatePeerId();
+      const peer = new Peer(peerId, {
+        debug: 2,
         config: {
           iceServers: [
+            { urls: 'stun:stun.relay.metered.ca:80' },
+            { urls: 'turn:a.relay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turn:a.relay.metered.ca:80?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turn:a.relay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turn:a.relay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
             { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
+            { urls: 'stun:stun1.l.google.com:19302' },
           ],
-          iceCandidatePoolSize: 5
-        }
+          iceCandidatePoolSize: 10,
+        },
+        host: '0.peerjs.com',
+        secure: true,
+        port: 443,
+        path: '/',
+        pingInterval: 3000,
+        retryTimer: 1000,
       });
 
       peerInstance.current = peer;
 
       peer.on('open', (id) => {
+        console.log('Peer opened with ID:', id);
         setMyPeerId(id);
         setConnectionStatus('connected');
-        initializeBroadcastChannel(id);
+        startDiscovery();
       });
 
       peer.on('connection', handleConnection);
@@ -67,52 +80,54 @@ function App() {
         } else if (error.type === 'disconnected' || error.type === 'network') {
           setConnectionStatus('disconnected');
           
-          // Clear any existing reconnection timeout
           if (reconnectTimeout.current) {
             clearTimeout(reconnectTimeout.current);
           }
           
-          // Try to reconnect after a delay
           reconnectTimeout.current = setTimeout(() => {
-            if (peerInstance.current) {
-              try {
-                peerInstance.current.destroy();
-              } catch (e) {
-                console.error('Error destroying peer:', e);
-              }
-              initializePeer();
-            }
-          }, 5000);
+            initializePeer();
+          }, 3000);
         }
       });
 
       peer.on('disconnected', () => {
+        console.log('Peer disconnected, attempting reconnect...');
         setConnectionStatus('disconnected');
-        // Try to reconnect
-        peer.reconnect();
+        
+        try {
+          peer.reconnect();
+        } catch (e) {
+          console.error('Reconnect failed, reinitializing...', e);
+          setTimeout(() => {
+            initializePeer();
+          }, 1000);
+        }
       });
-    };
+
+      return peer;
+    } catch (error) {
+      console.error('Failed to initialize peer:', error);
+      setConnectionStatus('error');
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    if (!navigator.mediaDevices || !window.RTCPeerConnection) {
+      setBrowserSupported(false);
+      setConnectionStatus('error');
+      return;
+    }
 
     initializePeer();
 
-    // Cleanup
     return () => {
       if (reconnectTimeout.current) {
         clearTimeout(reconnectTimeout.current);
       }
-      if (broadcastChannel.current) {
-        broadcastChannel.current.close();
+      if (discoveryInterval.current) {
+        clearInterval(discoveryInterval.current);
       }
-      // Clean up all peer connections
-      peers.forEach(peer => {
-        if (peer.connection) {
-          try {
-            peer.connection.close();
-          } catch (e) {
-            console.error('Error closing peer connection:', e);
-          }
-        }
-      });
       if (peerInstance.current) {
         try {
           peerInstance.current.destroy();
@@ -123,37 +138,68 @@ function App() {
     };
   }, []);
 
-  const initializeBroadcastChannel = (peerId: string) => {
-    if (!browserSupported) return;
-
-    try {
-      // Close existing channel if any
-      if (broadcastChannel.current) {
-        broadcastChannel.current.close();
-      }
-
-      // Create new broadcast channel
-      const bc = new BroadcastChannel('file-sharing-app');
-      broadcastChannel.current = bc;
-
-      // Announce presence immediately
-      bc.postMessage({ type: 'peer-joined', peerId });
-
-      // Listen for other peers
-      bc.onmessage = (event) => {
-        if (event.data.type === 'peer-joined' && event.data.peerId !== peerId) {
-          // Check if we've already tried to connect too many times
-          const attempts = connectionAttempts.current[event.data.peerId] || 0;
-          if (attempts < 3 && !peers.some(p => p.id === event.data.peerId)) {
-            connectionAttempts.current[event.data.peerId] = attempts + 1;
-            connectToPeer(event.data.peerId);
-          }
-        }
-      };
-    } catch (error) {
-      console.error('Failed to initialize broadcast channel:', error);
-      setConnectionStatus('error');
+  const startDiscovery = () => {
+    if (discoveryInterval.current) {
+      clearInterval(discoveryInterval.current);
     }
+
+    const broadcastPresence = () => {
+      if (peerInstance.current?.open) {
+        const presence = {
+          id: myPeerId,
+          timestamp: Date.now(),
+          userAgent: navigator.userAgent
+        };
+        
+        try {
+          localStorage.setItem(`peer-${myPeerId}`, JSON.stringify(presence));
+          
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key?.startsWith('peer-')) {
+              try {
+                const data = JSON.parse(localStorage.getItem(key) || '');
+                if (Date.now() - data.timestamp < 10000 && data.id !== myPeerId) {
+                  handlePeerDiscovery(data.id);
+                } else if (Date.now() - data.timestamp >= 10000) {
+                  localStorage.removeItem(key);
+                }
+              } catch (e) {
+                localStorage.removeItem(key);
+              }
+            }
+          }
+        } catch (e) {
+          console.error('Error in discovery:', e);
+        }
+      }
+    };
+
+    broadcastPresence();
+    discoveryInterval.current = setInterval(broadcastPresence, 5000);
+
+    window.addEventListener('storage', (e) => {
+      if (e.key?.startsWith('peer-')) {
+        try {
+          const data = JSON.parse(e.newValue || '');
+          if (data.id && data.id !== myPeerId) {
+            handlePeerDiscovery(data.id);
+          }
+        } catch (e) {
+          console.error('Error parsing peer presence:', e);
+        }
+      }
+    });
+  };
+
+  const handlePeerDiscovery = (remotePeerId: string) => {
+    if (!remotePeerId || seenPeers.current.has(remotePeerId) || remotePeerId === myPeerId) {
+      return;
+    }
+
+    console.log('Discovered peer:', remotePeerId);
+    seenPeers.current.add(remotePeerId);
+    connectToPeer(remotePeerId);
   };
 
   const handleConnection = (conn: any) => {
@@ -161,67 +207,71 @@ function App() {
       return;
     }
 
+    console.log('Handling incoming connection from:', conn.peer);
+
     try {
       conn.on('data', handleIncomingData);
       
       conn.on('open', () => {
+        console.log('Connection opened with:', conn.peer);
         setPeers(prev => {
-          // Remove any existing connection with this peer
           const filtered = prev.filter(p => p.id !== conn.peer);
           return [...filtered, { id: conn.peer, connection: conn }];
         });
+        setConnectError('');
+        setIsConnecting(false);
       });
 
       conn.on('close', () => {
+        console.log('Connection closed with:', conn.peer);
         setPeers(prev => prev.filter(p => p.id !== conn.peer));
-        // Reset connection attempts for this peer
-        delete connectionAttempts.current[conn.peer];
+        seenPeers.current.delete(conn.peer);
       });
 
       conn.on('error', (error: any) => {
-        console.error('Connection error:', error);
+        console.error('Connection error with:', conn.peer, error);
         setPeers(prev => prev.filter(p => p.id !== conn.peer));
+        seenPeers.current.delete(conn.peer);
+        setConnectError('Failed to connect to peer');
+        setIsConnecting(false);
       });
     } catch (error) {
       console.error('Error in handleConnection:', error);
+      setConnectError('Failed to establish connection');
+      setIsConnecting(false);
     }
   };
 
   const connectToPeer = (peerId: string) => {
-    if (!peerInstance.current || peerId === myPeerId || peers.some(p => p.id === peerId)) {
+    if (!peerInstance.current?.open || !peerId || peerId === myPeerId || peers.some(p => p.id === peerId)) {
       return;
     }
+
+    setIsConnecting(true);
+    setConnectError('');
+    console.log('Attempting to connect to peer:', peerId);
 
     try {
       const conn = peerInstance.current.connect(peerId, {
         reliable: true,
-        serialization: 'json'
+        serialization: 'json',
+        metadata: { id: myPeerId }
       });
 
-      if (!conn) {
-        throw new Error('Failed to create connection');
-      }
+      setTimeout(() => {
+        if (isConnecting && !peers.some(p => p.id === peerId)) {
+          setConnectError('Connection attempt timed out');
+          setIsConnecting(false);
+          seenPeers.current.delete(peerId);
+        }
+      }, 10000);
 
-      conn.on('open', () => {
-        conn.on('data', handleIncomingData);
-        setPeers(prev => {
-          const filtered = prev.filter(p => p.id !== peerId);
-          return [...filtered, { id: peerId, connection: conn }];
-        });
-      });
-
-      conn.on('close', () => {
-        setPeers(prev => prev.filter(p => p.id !== peerId));
-        delete connectionAttempts.current[peerId];
-      });
-
-      conn.on('error', (error: any) => {
-        console.error('Connection error:', error);
-        setPeers(prev => prev.filter(p => p.id !== peerId));
-      });
+      handleConnection(conn);
     } catch (error) {
-      console.error('Error in connectToPeer:', error);
-      delete connectionAttempts.current[peerId];
+      console.error('Error connecting to peer:', error);
+      setConnectError('Failed to connect to peer');
+      setIsConnecting(false);
+      seenPeers.current.delete(peerId);
     }
   };
 
@@ -234,7 +284,6 @@ function App() {
           from: data.from
         }]);
       } else if (data.type === 'file-data') {
-        // Handle incoming file data
         const blob = new Blob([data.content]);
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -260,7 +309,6 @@ function App() {
 
     peers.forEach(peer => {
       try {
-        // Send file offer
         peer.connection.send({
           type: 'file-offer',
           fileName: selectedFile.name,
@@ -268,7 +316,6 @@ function App() {
           from: myPeerId
         });
 
-        // Send the actual file
         const reader = new FileReader();
         reader.onload = () => {
           try {
@@ -288,6 +335,28 @@ function App() {
     });
 
     setSelectedFile(null);
+  };
+
+  const copyPeerId = async () => {
+    try {
+      await navigator.clipboard.writeText(myPeerId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy:', error);
+    }
+  };
+
+  const handleManualConnect = () => {
+    if (targetPeerId) {
+      connectToPeer(targetPeerId);
+      setTargetPeerId('');
+    }
+  };
+
+  const handleReconnect = () => {
+    setConnectionStatus('initializing');
+    initializePeer();
   };
 
   if (!browserSupported) {
@@ -316,17 +385,36 @@ function App() {
               <Share2 className="w-6 h-6 text-blue-500" />
               <h1 className="text-2xl font-bold">P2P File Sharing</h1>
             </div>
-            <div className="flex items-center space-x-2">
-              <Users className="w-5 h-5 text-gray-500" />
-              <span className="text-sm text-gray-500">
-                {peers.length} connected peer(s)
-              </span>
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <Users className="w-5 h-5 text-gray-500" />
+                <span className="text-sm text-gray-500">
+                  {peers.length} connected peer(s)
+                </span>
+              </div>
+              <button
+                onClick={handleReconnect}
+                className="p-2 text-gray-500 hover:text-blue-500 transition-colors rounded-full hover:bg-gray-100"
+                title="Reconnect"
+              >
+                <RefreshCw className="w-5 h-5" />
+              </button>
             </div>
           </div>
 
           <div className="mb-6">
-            <div className="flex items-center space-x-2 mb-2">
-              <p className="text-sm text-gray-500">Your ID: {myPeerId}</p>
+            <div className="flex items-center space-x-2 mb-4">
+              <div className="flex-1 flex items-center space-x-2">
+                <p className="text-sm text-gray-500">Your ID:</p>
+                <code className="px-2 py-1 bg-gray-100 rounded text-sm">{myPeerId}</code>
+                <button
+                  onClick={copyPeerId}
+                  className="p-1 text-gray-500 hover:text-blue-500 transition-colors"
+                  title="Copy ID"
+                >
+                  {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                 connectionStatus === 'connected' ? 'bg-green-100 text-green-800' : 
                 connectionStatus === 'error' ? 'bg-red-100 text-red-800' : 
@@ -335,6 +423,36 @@ function App() {
                 {connectionStatus}
               </span>
             </div>
+
+            <div className="space-y-2 mb-4">
+              <div className="flex space-x-2">
+                <input
+                  type="text"
+                  value={targetPeerId}
+                  onChange={(e) => setTargetPeerId(e.target.value)}
+                  placeholder="Enter peer ID to connect manually"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+                <button
+                  onClick={handleManualConnect}
+                  disabled={!targetPeerId || targetPeerId === myPeerId || isConnecting}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                >
+                  {isConnecting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Connecting...</span>
+                    </>
+                  ) : (
+                    <span>Connect</span>
+                  )}
+                </button>
+              </div>
+              {connectError && (
+                <p className="text-sm text-red-500">{connectError}</p>
+              )}
+            </div>
+
             <div className="flex space-x-4">
               <div className="flex-1">
                 <input
