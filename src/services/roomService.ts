@@ -12,7 +12,10 @@ export class RoomService {
   }
 
   private createWebSocket(): WebSocket {
-    const ws = new WebSocket('ws://localhost:8080');
+    const wsUrl = import.meta.env.PROD 
+      ? 'wss://real-pike-97.deno.dev/'
+      : 'ws://sendtofriend.netlify.app/';
+    const ws = new WebSocket(wsUrl);
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
