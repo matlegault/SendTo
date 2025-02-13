@@ -15,9 +15,9 @@ export class RoomService {
   }
 
   private createWebSocket(): WebSocket {
-    const wsUrl = import.meta.env.PROD 
-      ? 'wss://real-pike-97.deno.dev/'
-      : 'ws://sendtofriend.netlify.app/';
+    const wsUrl = this.networkMode === 'local'
+      ? 'ws://localhost:8080'
+      : 'wss://real-pike-97.deno.dev/';
 
     console.log('🔌 Connecting to WebSocket server:', wsUrl);
     const ws = new WebSocket(wsUrl);
@@ -32,6 +32,9 @@ export class RoomService {
         console.log('📥 Received WebSocket message:', data.type);
         
         switch (data.type) {
+          case 'heartbeat':
+            ws.send(JSON.stringify({ type: 'heartbeat' }));
+            break;
           case 'peers-list':
             console.log('👥 Received peers list:', data.peers);
             data.peers.forEach((peerId: string) => {
