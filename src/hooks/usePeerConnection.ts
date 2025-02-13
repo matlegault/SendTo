@@ -244,6 +244,35 @@ export function usePeerConnection() {
 
   const initializePeer = useCallback(() => {
     try {
+      // Clean up existing peer instance
+      if (peerInstance.current) {
+        console.log('🧹 Cleaning up existing peer instance');
+        peers.forEach(peer => {
+          try {
+            peer.connection.close();
+          } catch (e) {
+            console.error('Error closing peer connection:', e);
+          }
+        });
+        setPeers([]);
+        seenPeers.current.clear();
+        try {
+          localStorage.removeItem(`peer-${myPeerId}`);
+        } catch (e) {
+          console.error('Error removing peer presence:', e);
+        }
+        try {
+          peerInstance.current.destroy();
+        } catch (e) {
+          console.error('Error destroying peer:', e);
+        }
+      }
+
+      // Clear any existing intervals/timeouts
+      if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current);
+      if (discoveryInterval.current) clearInterval(discoveryInterval.current);
+
+      // Initialize new peer
       const id = generatePeerId();
       const config = networkMode === 'local' ? PEER_CONFIG.local : PEER_CONFIG.global;
       
@@ -261,7 +290,7 @@ export function usePeerConnection() {
           console.log('🧹 Cleaning up old RoomService');
           roomServiceRef.current.cleanup();
         }
-        console.log('��️ Creating new RoomService');
+        console.log('🏗️ Creating new RoomService');
         roomServiceRef.current = new RoomService(networkMode);
         roomServiceRef.current.initialize(id);
       });
@@ -290,7 +319,7 @@ export function usePeerConnection() {
       console.error('🔴 Error initializing peer:', error);
       setConnectionStatus('error');
     }
-  }, [networkMode]);
+  }, [networkMode, myPeerId, handleConnection]);
 
   const handleFileTransfer = useCallback((conn: DataConnection, file: File) => {
     const reader = new FileReader();
