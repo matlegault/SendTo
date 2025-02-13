@@ -21,7 +21,6 @@ export function usePeerConnection() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [transferError, setTransferError] = useState('');
   const [currentFileReception, setCurrentFileReception] = useState<FileTransfer | null>(null);
-  const [networkMode, setNetworkMode] = useState<'local' | 'global'>('local');
 
   const peerInstance = useRef<any>(null);
   const reconnectTimeout = useRef<NodeJS.Timeout>();
@@ -220,27 +219,28 @@ export function usePeerConnection() {
     }
   };
 
-  const initializePeer = useCallback(() => {
+  const initializePeer = () => {
     try {
-      const id = generatePeerId();
-      const config = networkMode === 'local' ? PEER_CONFIG.local : PEER_CONFIG.global;
-      
-      peerInstance.current = new Peer(id, config);
-      setMyPeerId(id);
-      setConnectionStatus('connecting');
-      
-      peerInstance.current.on('open', () => {
+      if (peerInstance.current) {
+        peerInstance.current.destroy();
+      }
+
+      seenPeers.current.clear();
+
+      const peerId = generatePeerId();
+      const peer = new Peer(peerId, PEER_CONFIG);
+
+      peerInstance.current = peer;
+
+      peer.on('open', (id) => {
+        setMyPeerId(id);
         setConnectionStatus('connected');
-        if (roomServiceRef.current) {
-          roomServiceRef.current.cleanup();
-        }
-        roomServiceRef.current = new RoomService(networkMode);
-        roomServiceRef.current.initialize(id);
+        startDiscovery();
       });
 
-      peerInstance.current.on('connection', handleConnection);
+      peer.on('connection', handleConnection);
 
-      peerInstance.current.on('error', (error) => {
+      peer.on('error', (error) => {
         console.error('Peer error:', error);
         if (error.type === 'browser-incompatible') {
           setBrowserSupported(false);
@@ -259,23 +259,23 @@ export function usePeerConnection() {
         }
       });
 
-      peerInstance.current.on('disconnected', () => {
+      peer.on('disconnected', () => {
         setConnectionStatus('disconnected');
         try {
-          peerInstance.current.reconnect();
+          peer.reconnect();
         } catch (e) {
           console.error('Error reconnecting:', e);
           setTimeout(initializePeer, 1000);
         }
       });
 
-      return peerInstance.current;
+      return peer;
     } catch (error) {
-      console.error('Peer initialization error:', error);
+      console.error('Error initializing peer:', error);
       setConnectionStatus('error');
       return null;
     }
-  }, [networkMode]);
+  };
 
   const handleFileTransfer = useCallback((conn: DataConnection, file: File) => {
     const reader = new FileReader();
@@ -464,8 +464,6 @@ export function usePeerConnection() {
     initializePeer,
     handleFileTransfer,
     transferError,
-    currentFileReception,
-    networkMode,
-    setNetworkMode
+    currentFileReception
   };
 }
