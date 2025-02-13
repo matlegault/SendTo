@@ -60,10 +60,10 @@ export function useFileTransfer() {
       const arrayBuffer = reader.result;
       const uint8Array = new Uint8Array(arrayBuffer);
       const totalChunks = Math.ceil(arrayBuffer.byteLength / CHUNK_SIZE);
-      
-      for (const peer of peers) {
-        try {
-          // Send metadata first
+
+      try {
+        // Send metadata to all peers simultaneously
+        await Promise.all(peers.map(peer => {
           const metadata: FileMetadata = {
             fileName: selectedFile.name,
             fileSize: selectedFile.size,
@@ -71,64 +71,68 @@ export function useFileTransfer() {
             fileType: selectedFile.type,
             from: peer.connection.peer
           };
+          return peer.connection.send({ type: 'file-metadata', metadata });
+        }));
+
+        // Send chunks to all peers simultaneously
+        for (let i = 0; i < totalChunks; i++) {
+          const start = i * CHUNK_SIZE;
+          const end = Math.min(start + CHUNK_SIZE, arrayBuffer.byteLength);
+          const chunk = uint8Array.slice(start, end);
           
-          peer.connection.send({ type: 'file-metadata', metadata });
+          // Convert chunk to base64
+          const base64Chunk = btoa(
+            String.fromCharCode.apply(null, Array.from(chunk))
+          );
 
-          // Send chunks with progress tracking
-          for (let i = 0; i < totalChunks; i++) {
-            const start = i * CHUNK_SIZE;
-            const end = Math.min(start + CHUNK_SIZE, arrayBuffer.byteLength);
-            const chunk = uint8Array.slice(start, end);
-            
-            // Convert chunk to base64
-            const base64Chunk = btoa(
-              String.fromCharCode.apply(null, Array.from(chunk))
-            );
+          const chunkData = {
+            type: 'file-chunk',
+            fileName: selectedFile.name,
+            chunkIndex: i,
+            totalChunks,
+            chunk: base64Chunk
+          };
 
-            const chunkData = {
-              type: 'file-chunk',
-              fileName: selectedFile.name,
-              chunkIndex: i,
-              totalChunks,
-              chunk: base64Chunk
-            };
-
-            await new Promise<void>((resolve) => {
+          // Send the same chunk to all peers simultaneously
+          await Promise.all(peers.map(peer => 
+            new Promise<void>((resolve) => {
               peer.connection.send(chunkData);
-              
-              // Update sending progress
-              const progress = ((i + 1) / totalChunks) * 100;
-              setSendingFiles(prev => 
-                prev.map(file => 
-                  file.name === selectedFile.name
-                    ? { ...file, progress }
-                    : file
-                )
-              );
-              
-              setTimeout(resolve, 100);
-            });
-          }
+              resolve();
+            })
+          ));
 
-          // Mark as complete
+          // Update sending progress once per chunk
+          const progress = ((i + 1) / totalChunks) * 100;
           setSendingFiles(prev => 
             prev.map(file => 
               file.name === selectedFile.name
-                ? { ...file, progress: 100, accepted: true, sending: false }
+                ? { ...file, progress }
                 : file
             )
           );
 
-        } catch (error) {
-          console.error('Error sending file to peer:', error);
-          setSendingFiles(prev => 
-            prev.map(file => 
-              file.name === selectedFile.name
-                ? { ...file, progress: 0, accepted: false, sending: false }
-                : file
-            )
-          );
+          // Small delay between chunks to prevent overwhelming connections
+          await new Promise(resolve => setTimeout(resolve, 50));
         }
+
+        // Mark as complete
+        setSendingFiles(prev => 
+          prev.map(file => 
+            file.name === selectedFile.name
+              ? { ...file, progress: 100, accepted: true, sending: false }
+              : file
+          )
+        );
+
+      } catch (error) {
+        console.error('Error sending file:', error);
+        setSendingFiles(prev => 
+          prev.map(file => 
+            file.name === selectedFile.name
+              ? { ...file, progress: 0, accepted: false, sending: false }
+              : file
+          )
+        );
       }
     };
 
