@@ -24,7 +24,8 @@ function App() {
     currentFileReception,
     transferError,
     networkMode,
-    setNetworkMode
+    setNetworkMode,
+    seenPeers
   } = usePeerConnection();
 
   const {
@@ -291,9 +292,12 @@ function App() {
                 console.log('🔍 Debug Info:');
                 console.log('🆔 My Peer ID:', myPeerId);
                 console.log('👥 Connected Peers:', peers);
-                console.log('👀 Seen Peers:', Array.from(seenPeers.current));
+                console.log('👀 Seen Peers:', Array.from(seenPeers.current || new Set()));
                 console.log('🌐 Network Mode:', networkMode);
                 console.log('📡 Connection Status:', connectionStatus);
+                console.log('💾 LocalStorage:', Object.fromEntries(
+                  Object.entries(localStorage).filter(([key]) => key.startsWith('peer-'))
+                ));
               }}
               className="text-sm text-gray-500 hover:text-gray-700"
             >

@@ -116,7 +116,7 @@ export function usePeerConnection() {
           console.log('⏭️ Skipping peer:', data.id, '(stale or already seen)');
         }
       } catch (e) {
-        console.error('�� Error parsing peer data:', e);
+        console.error('🔴 Error parsing peer data:', e);
       }
     }
   };
@@ -240,63 +240,55 @@ export function usePeerConnection() {
     }
   };
 
-  const initializePeer = () => {
+  const initializePeer = useCallback(() => {
     try {
-      if (peerInstance.current) {
-        peerInstance.current.destroy();
-      }
-
-      seenPeers.current.clear();
-
-      const peerId = generatePeerId();
-      const peer = new Peer(peerId, PEER_CONFIG);
-
-      peerInstance.current = peer;
-
-      peer.on('open', (id) => {
-        setMyPeerId(id);
+      const id = generatePeerId();
+      const config = networkMode === 'local' ? PEER_CONFIG.local : PEER_CONFIG.global;
+      
+      console.log('🔧 Initializing PeerJS with config:', config);
+      console.log('🆔 Generated Peer ID:', id);
+      
+      peerInstance.current = new Peer(id, config);
+      setMyPeerId(id);
+      setConnectionStatus('connecting');
+      
+      peerInstance.current.on('open', () => {
+        console.log('✅ PeerJS connection established');
         setConnectionStatus('connected');
-        startDiscovery();
-      });
-
-      peer.on('connection', handleConnection);
-
-      peer.on('error', (error) => {
-        console.error('Peer error:', error);
-        if (error.type === 'browser-incompatible') {
-          setBrowserSupported(false);
-          setConnectionStatus('error');
-        } else if (error.type === 'peer-unavailable') {
-          setConnectError('Peer is not available');
-          setIsConnecting(false);
-        } else if (error.type === 'disconnected' || error.type === 'network') {
-          setConnectionStatus('disconnected');
-          
-          if (reconnectTimeout.current) {
-            clearTimeout(reconnectTimeout.current);
-          }
-          
-          reconnectTimeout.current = setTimeout(initializePeer, 3000);
+        if (roomServiceRef.current) {
+          console.log('🧹 Cleaning up old RoomService');
+          roomServiceRef.current.cleanup();
         }
+        console.log('��️ Creating new RoomService');
+        roomServiceRef.current = new RoomService(networkMode);
+        roomServiceRef.current.initialize(id);
       });
 
-      peer.on('disconnected', () => {
+      peerInstance.current.on('error', (error: any) => {
+        console.error('🔴 PeerJS error:', error);
+        setConnectionStatus('error');
+        setConnectError(`Connection error: ${error.type}`);
+      });
+
+      peerInstance.current.on('disconnected', () => {
+        console.log('🟡 PeerJS disconnected, attempting to reconnect...');
+        setConnectionStatus('connecting');
+        peerInstance.current?.reconnect();
+      });
+
+      peerInstance.current.on('close', () => {
+        console.log('🔴 PeerJS connection closed');
         setConnectionStatus('disconnected');
-        try {
-          peer.reconnect();
-        } catch (e) {
-          console.error('Error reconnecting:', e);
-          setTimeout(initializePeer, 1000);
-        }
       });
 
-      return peer;
+      // Add connection handler
+      peerInstance.current.on('connection', handleConnection);
+
     } catch (error) {
-      console.error('Error initializing peer:', error);
+      console.error('🔴 Error initializing peer:', error);
       setConnectionStatus('error');
-      return null;
     }
-  };
+  }, [networkMode]);
 
   const handleFileTransfer = useCallback((conn: DataConnection, file: File) => {
     const reader = new FileReader();
@@ -485,6 +477,9 @@ export function usePeerConnection() {
     initializePeer,
     handleFileTransfer,
     transferError,
-    currentFileReception
+    currentFileReception,
+    networkMode,
+    setNetworkMode,
+    seenPeers
   };
 }

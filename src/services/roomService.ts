@@ -5,9 +5,12 @@ export class RoomService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectTimeout: number | null = null;
+  private networkMode: 'local' | 'global';
 
-  constructor() {
+  constructor(networkMode: 'local' | 'global' = 'local') {
+    console.log('🔧 Initializing RoomService in', networkMode, 'mode');
     this.myPeerId = '';
+    this.networkMode = networkMode;
     this.ws = this.createWebSocket();
   }
 
@@ -15,30 +18,44 @@ export class RoomService {
     const wsUrl = import.meta.env.PROD 
       ? 'wss://real-pike-97.deno.dev/'
       : 'ws://sendtofriend.netlify.app/';
+
+    console.log('🔌 Connecting to WebSocket server:', wsUrl);
     const ws = new WebSocket(wsUrl);
 
+    ws.onopen = () => {
+      console.log('✅ WebSocket connection established');
+    };
+
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      
-      switch (data.type) {
-        case 'peers-list':
-          data.peers.forEach((peerId: string) => {
-            this.onPeerDiscoveredCallback?.(peerId);
-          });
-          break;
-          
-        case 'peer-joined':
-          this.onPeerDiscoveredCallback?.(data.peerId);
-          break;
+      try {
+        const data = JSON.parse(event.data);
+        console.log('📥 Received WebSocket message:', data.type);
+        
+        switch (data.type) {
+          case 'peers-list':
+            console.log('👥 Received peers list:', data.peers);
+            data.peers.forEach((peerId: string) => {
+              this.onPeerDiscoveredCallback?.(peerId);
+            });
+            break;
+            
+          case 'peer-joined':
+            console.log('👤 New peer joined:', data.peerId);
+            this.onPeerDiscoveredCallback?.(data.peerId);
+            break;
+        }
+      } catch (e) {
+        console.error('🔴 Error handling WebSocket message:', e);
       }
     };
 
     ws.onclose = () => {
+      console.log('🔴 WebSocket connection closed');
       this.handleDisconnection();
     };
 
     ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
+      console.error('🔴 WebSocket error:', error);
     };
 
     return ws;
@@ -59,23 +76,19 @@ export class RoomService {
     }
   }
 
-  initialize(peerId: string) {
+  public initialize(peerId: string) {
+    console.log('🚀 Initializing RoomService with peer ID:', peerId);
     this.myPeerId = peerId;
     if (this.ws.readyState === WebSocket.OPEN) {
-      this.register();
+      console.log('📡 Registering peer with signaling server');
+      this.ws.send(JSON.stringify({ type: 'register', peerId }));
     } else {
+      console.log('⏳ Waiting for WebSocket connection...');
       this.ws.onopen = () => {
-        this.register();
-        this.reconnectAttempts = 0;
+        console.log('📡 WebSocket now open, registering peer');
+        this.ws.send(JSON.stringify({ type: 'register', peerId }));
       };
     }
-  }
-
-  private register() {
-    this.ws.send(JSON.stringify({
-      type: 'register',
-      peerId: this.myPeerId
-    }));
   }
 
   onPeerDiscovered(callback: (peerId: string) => void) {
