@@ -181,15 +181,35 @@ function App() {
                     key={index}
                     className="flex items-center justify-between p-3 bg-gray-50 rounded-md"
                   >
-                    <div>
+                    <div className="flex-1">
                       <p className="font-medium">{file.name}</p>
                       <p className="text-sm text-gray-500">
                         From: {file.from} • {Math.round(file.size / 1024)} KB
                       </p>
+                      {typeof file.progress === 'number' && !file.accepted && (
+                        <div className="mt-2">
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                              style={{ width: `${Math.round(file.progress)}%` }}
+                            />
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {Math.round(file.progress)}% downloaded
+                          </p>
+                        </div>
+                      )}
                     </div>
-                    {!file.accepted && (
-                      <button className="text-blue-500 hover:text-blue-600">
-                        Download
+                    {file.accepted ? (
+                      <span className="text-green-500 text-sm">Downloaded</span>
+                    ) : (
+                      <button 
+                        className="text-blue-500 hover:text-blue-600"
+                        disabled={typeof file.progress === 'number' && file.progress < 100}
+                      >
+                        {typeof file.progress === 'number' && file.progress < 100 
+                          ? 'Downloading...' 
+                          : 'Download'}
                       </button>
                     )}
                   </div>

@@ -17,9 +17,18 @@ interface FileChunkData {
   receivedChunks: number;
 }
 
+interface FileTransfer {
+  name: string;
+  size: number;
+  from: string;
+  accepted: boolean;
+  progress?: number;
+}
+
 export function useFileTransfer() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [incomingFiles, setIncomingFiles] = useState<FileTransfer[]>([]);
+  const [transferProgress, setTransferProgress] = useState<{ [key: string]: number }>({});
   const [fileTransfers] = useState<Map<string, FileChunkData>>(new Map());
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -106,16 +115,26 @@ export function useFileTransfer() {
           name: metadata.fileName,
           size: metadata.fileSize,
           from: metadata.from,
-          accepted: false
+          accepted: false,
+          progress: 0
         }]);
       } 
       else if (data.type === 'file-chunk') {
         const transfer = fileTransfers.get(data.fileName);
         if (!transfer) return;
 
-        // Store base64 chunk
         transfer.chunks[data.chunkIndex] = data.chunk;
         transfer.receivedChunks++;
+
+        // Update progress
+        const progress = (transfer.receivedChunks / transfer.metadata.totalChunks) * 100;
+        setIncomingFiles(prev => 
+          prev.map(file => 
+            file.name === data.fileName 
+              ? { ...file, progress } 
+              : file
+          )
+        );
 
         if (transfer.receivedChunks === transfer.metadata.totalChunks) {
           const allChunksReceived = transfer.chunks.every(chunk => chunk !== undefined);
@@ -161,6 +180,7 @@ export function useFileTransfer() {
     incomingFiles,
     handleFileSelect,
     sendFile,
-    handleIncomingFile
+    handleIncomingFile,
+    transferProgress
   };
 }
