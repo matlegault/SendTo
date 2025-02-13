@@ -59,6 +59,10 @@ export class RoomService {
 
     ws.onerror = (error) => {
       console.error('🔴 WebSocket error:', error);
+      // Don't propagate WebSocket errors unless they're critical
+      if (this.ws.readyState === WebSocket.CLOSED) {
+        this.handleDisconnection();
+      }
     };
 
     return ws;

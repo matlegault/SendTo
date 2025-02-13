@@ -297,8 +297,21 @@ export function usePeerConnection() {
 
       peerInstance.current.on('error', (error: any) => {
         console.error('🔴 PeerJS error:', error);
-        setConnectionStatus('error');
-        setConnectError(`Connection error: ${error.type}`);
+        
+        // Only set error state for critical connection issues
+        if (error.type === 'network' || error.type === 'server-error' || error.type === 'browser-incompatible') {
+          setConnectionStatus('error');
+          setConnectError(`Connection error: ${error.type}`);
+        } else if (error.type === 'peer-unavailable') {
+          // Handle peer connection failures locally
+          console.log(`⚠️ Could not connect to peer: ${error.peerId}`);
+          setConnectError(`Could not connect to peer: ${error.peerId}`);
+          // Clear error message after a delay
+          setTimeout(() => setConnectError(''), 3000);
+        } else {
+          // Log other non-critical errors without changing connection status
+          console.warn(`⚠️ Non-critical PeerJS error: ${error.type}`);
+        }
       });
 
       peerInstance.current.on('disconnected', () => {
