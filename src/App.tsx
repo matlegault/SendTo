@@ -30,7 +30,9 @@ function App() {
     incomingFiles,
     handleFileSelect,
     sendFile,
-    handleIncomingFile
+    handleIncomingFile,
+    sendingFiles,
+    setSendingFiles
   } = useFileTransfer();
 
   const [targetPeerId, setTargetPeerId] = useState('');
@@ -237,6 +239,47 @@ function App() {
           {transferError && (
             <div className="mt-4 text-sm text-red-500">
               {transferError}
+            </div>
+          )}
+
+          {sendingFiles.length > 0 && (
+            <div className="border-t pt-4">
+              <h2 className="text-lg font-semibold mb-4">Sending Files</h2>
+              <div className="space-y-3">
+                {sendingFiles.map((file, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-md"
+                  >
+                    <div className="flex-1">
+                      <p className="font-medium">{file.name}</p>
+                      <p className="text-sm text-gray-500">
+                        {Math.round(file.size / 1024)} KB
+                      </p>
+                      {file.sending && (
+                        <div className="mt-2">
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                              style={{ width: `${Math.round(file.progress || 0)}%` }}
+                            />
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {Math.round(file.progress || 0)}% sent
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    {file.accepted ? (
+                      <span className="text-green-500 text-sm">Sent</span>
+                    ) : file.sending ? (
+                      <span className="text-blue-500 text-sm">Sending...</span>
+                    ) : (
+                      <span className="text-red-500 text-sm">Failed</span>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

@@ -23,6 +23,7 @@ interface FileTransfer {
   from: string;
   accepted: boolean;
   progress?: number;
+  sending?: boolean;
 }
 
 export function useFileTransfer() {
@@ -30,6 +31,7 @@ export function useFileTransfer() {
   const [incomingFiles, setIncomingFiles] = useState<FileTransfer[]>([]);
   const [transferProgress, setTransferProgress] = useState<{ [key: string]: number }>({});
   const [fileTransfers] = useState<Map<string, FileChunkData>>(new Map());
+  const [sendingFiles, setSendingFiles] = useState<FileTransfer[]>([]);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -40,6 +42,16 @@ export function useFileTransfer() {
 
   const sendFile = async (peers: PeerConnection[]) => {
     if (!selectedFile || peers.length === 0) return;
+
+    // Add file to sending list
+    setSendingFiles(prev => [...prev, {
+      name: selectedFile.name,
+      size: selectedFile.size,
+      from: 'me',
+      accepted: false,
+      progress: 0,
+      sending: true
+    }]);
 
     const reader = new FileReader();
     reader.onload = async () => {
@@ -62,7 +74,7 @@ export function useFileTransfer() {
           
           peer.connection.send({ type: 'file-metadata', metadata });
 
-          // Send chunks with sequence verification
+          // Send chunks with progress tracking
           for (let i = 0; i < totalChunks; i++) {
             const start = i * CHUNK_SIZE;
             const end = Math.min(start + CHUNK_SIZE, arrayBuffer.byteLength);
@@ -83,16 +95,39 @@ export function useFileTransfer() {
 
             await new Promise<void>((resolve) => {
               peer.connection.send(chunkData);
-              setTimeout(resolve, 100); // Increased delay between chunks
+              
+              // Update sending progress
+              const progress = ((i + 1) / totalChunks) * 100;
+              setSendingFiles(prev => 
+                prev.map(file => 
+                  file.name === selectedFile.name
+                    ? { ...file, progress }
+                    : file
+                )
+              );
+              
+              setTimeout(resolve, 100);
             });
           }
 
-          peer.connection.send({
-            type: 'file-complete',
-            fileName: selectedFile.name
-          });
+          // Mark as complete
+          setSendingFiles(prev => 
+            prev.map(file => 
+              file.name === selectedFile.name
+                ? { ...file, progress: 100, accepted: true, sending: false }
+                : file
+            )
+          );
+
         } catch (error) {
           console.error('Error sending file to peer:', error);
+          setSendingFiles(prev => 
+            prev.map(file => 
+              file.name === selectedFile.name
+                ? { ...file, progress: 0, accepted: false, sending: false }
+                : file
+            )
+          );
         }
       }
     };
@@ -181,6 +216,8 @@ export function useFileTransfer() {
     handleFileSelect,
     sendFile,
     handleIncomingFile,
-    transferProgress
+    transferProgress,
+    sendingFiles,
+    setSendingFiles
   };
 }
