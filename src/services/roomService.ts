@@ -5,9 +5,11 @@ export class RoomService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectTimeout: number | null = null;
+  private networkMode: 'local' | 'global';
 
-  constructor() {
+  constructor(networkMode: 'local' | 'global' = 'local') {
     this.myPeerId = '';
+    this.networkMode = networkMode;
     this.ws = this.createWebSocket();
   }
 
