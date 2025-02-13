@@ -102,14 +102,15 @@ export function usePeerConnection() {
 
       try {
         const data = JSON.parse(localStorage.getItem(key) || '');
-        console.log('🔍 Found peer in localStorage:', data);
+        const age = now - data.timestamp;
+        console.log('�� Found peer:', data.id, 'Age:', age + 'ms');
         
         if (!data.id || data.id === myPeerId || activePeers.has(data.id)) {
           console.log('⏭️ Skipping peer:', data.id, '(self or already connected)');
           continue;
         }
 
-        if (now - data.timestamp <= 3000 && !seenPeers.current.has(data.id)) {
+        if (age <= 10000 && !seenPeers.current.has(data.id)) {
           console.log('🤝 Attempting to connect to peer:', data.id);
           connectToPeer(data.id);
         } else {
@@ -134,7 +135,8 @@ export function usePeerConnection() {
         if (key?.startsWith('peer-')) {
           try {
             const data = JSON.parse(localStorage.getItem(key) || '');
-            if (now - data.timestamp > 5000) {
+            const age = now - data.timestamp;
+            if (age > 15000) {
               localStorage.removeItem(key);
               seenPeers.current.delete(data.id);
             }
