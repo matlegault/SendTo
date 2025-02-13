@@ -22,7 +22,9 @@ function App() {
     connectToPeer,
     initializePeer,
     currentFileReception,
-    transferError
+    transferError,
+    networkMode,
+    setNetworkMode
   } = usePeerConnection();
 
   const {
@@ -282,6 +284,22 @@ function App() {
               </div>
             </div>
           )}
+
+          <div className="mb-4">
+            <button
+              onClick={() => {
+                console.log('🔍 Debug Info:');
+                console.log('🆔 My Peer ID:', myPeerId);
+                console.log('👥 Connected Peers:', peers);
+                console.log('👀 Seen Peers:', Array.from(seenPeers.current));
+                console.log('🌐 Network Mode:', networkMode);
+                console.log('📡 Connection Status:', connectionStatus);
+              }}
+              className="text-sm text-gray-500 hover:text-gray-700"
+            >
+              Debug Info
+            </button>
+          </div>
         </div>
       </div>
     </div>

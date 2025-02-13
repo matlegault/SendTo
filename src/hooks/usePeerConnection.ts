@@ -21,6 +21,7 @@ export function usePeerConnection() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [transferError, setTransferError] = useState('');
   const [currentFileReception, setCurrentFileReception] = useState<FileTransfer | null>(null);
+  const [networkMode, setNetworkMode] = useState<'local' | 'global'>('local');
 
   const peerInstance = useRef<any>(null);
   const reconnectTimeout = useRef<NodeJS.Timeout>();
@@ -29,7 +30,12 @@ export function usePeerConnection() {
   const roomServiceRef = useRef<RoomService | null>(null);
 
   const handleConnection = (conn: any) => {
-    if (!conn) return;
+    if (!conn) {
+      console.log('🔴 Connection object is null');
+      return;
+    }
+
+    console.log('🟡 Attempting connection with peer:', conn.peer);
 
     try {
       conn.on('data', (data: any) => {
@@ -39,10 +45,13 @@ export function usePeerConnection() {
       });
       
       conn.on('open', () => {
+        console.log('🟢 Connection opened with peer:', conn.peer);
         setPeers(prev => {
           if (prev.some(p => p.id === conn.peer)) {
+            console.log('🟨 Peer already connected:', conn.peer);
             return prev;
           }
+          console.log('✅ Adding new peer:', conn.peer);
           return [...prev, { id: conn.peer, connection: conn }];
         });
         setConnectError('');
@@ -50,12 +59,13 @@ export function usePeerConnection() {
       });
 
       conn.on('close', () => {
+        console.log('🔴 Connection closed with peer:', conn.peer);
         setPeers(prev => prev.filter(p => p.id !== conn.peer));
         seenPeers.current.delete(conn.peer);
       });
 
       conn.on('error', (err: any) => {
-        console.error('Connection error:', err);
+        console.error('🔴 Connection error with peer:', conn.peer, err);
         setPeers(prev => prev.filter(p => p.id !== conn.peer));
         seenPeers.current.delete(conn.peer);
         
@@ -67,17 +77,24 @@ export function usePeerConnection() {
         setIsConnecting(false);
       });
     } catch (error) {
-      console.error('Error in handleConnection:', error);
+      console.error('🔴 Error in handleConnection:', error);
       setConnectError('Failed to establish connection');
       setIsConnecting(false);
     }
   };
 
   const discoverAndConnectToPeers = () => {
-    if (!peerInstance.current?.open) return;
+    if (!peerInstance.current?.open) {
+      console.log('🟨 Peer instance not ready for discovery');
+      return;
+    }
 
+    console.log('🔍 Starting peer discovery...');
     const activePeers = new Set(peers.map(p => p.id));
     const now = Date.now();
+
+    console.log('👥 Current active peers:', Array.from(activePeers));
+    console.log('👀 Seen peers:', Array.from(seenPeers.current));
 
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -85,17 +102,21 @@ export function usePeerConnection() {
 
       try {
         const data = JSON.parse(localStorage.getItem(key) || '');
-        const peerId = data.id;
+        console.log('🔍 Found peer in localStorage:', data);
         
-        // Skip if it's our own ID or already connected
-        if (!peerId || peerId === myPeerId || activePeers.has(peerId)) continue;
+        if (!data.id || data.id === myPeerId || activePeers.has(data.id)) {
+          console.log('⏭️ Skipping peer:', data.id, '(self or already connected)');
+          continue;
+        }
 
-        // Only connect to peers that have been seen in the last 3 seconds
-        if (now - data.timestamp <= 3000 && !seenPeers.current.has(peerId)) {
-          connectToPeer(peerId);
+        if (now - data.timestamp <= 3000 && !seenPeers.current.has(data.id)) {
+          console.log('🤝 Attempting to connect to peer:', data.id);
+          connectToPeer(data.id);
+        } else {
+          console.log('⏭️ Skipping peer:', data.id, '(stale or already seen)');
         }
       } catch (e) {
-        console.error('Error parsing peer data:', e);
+        console.error('�� Error parsing peer data:', e);
       }
     }
   };
