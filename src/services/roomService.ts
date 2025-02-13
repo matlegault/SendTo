@@ -15,9 +15,9 @@ export class RoomService {
   }
 
   private createWebSocket(): WebSocket {
-    const wsUrl = this.networkMode === 'local'
-      ? 'ws://localhost:8080'
-      : 'wss://real-pike-97.deno.dev/';
+    const wsUrl = import.meta.env.PROD 
+      ? 'wss://real-pike-97.deno.dev/'  // Production Deno Deploy URL
+      : 'ws://localhost:8080';           // Local development URL
 
     console.log('🔌 Connecting to WebSocket server:', wsUrl);
     const ws = new WebSocket(wsUrl);
