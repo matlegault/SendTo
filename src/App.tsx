@@ -23,8 +23,6 @@ function App() {
     initializePeer,
     currentFileReception,
     transferError,
-    networkMode,
-    setNetworkMode,
     seenPeers
   } = usePeerConnection();
 
@@ -80,14 +78,9 @@ function App() {
       <div className="max-w-4xl mx-auto sm:p-6">
         <div className="bg-white sm:rounded-lg sm:shadow-lg sm:p-6 p-4">
         <Header 
-            peerCount={peers.length} 
-            onReconnect={handleReconnect} 
-            networkMode={networkMode} 
-            onNetworkModeChange={(mode) => {
-              setNetworkMode(mode);
-              initializePeer();
-            }} 
-          />
+          peerCount={peers.length} 
+          onReconnect={handleReconnect}
+        />
           <div className="mb-6">
             <div className="flex items-center space-x-2 mb-4">
               <div className="flex-1 flex items-center space-x-2">

@@ -21,7 +21,6 @@ export function usePeerConnection() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [transferError, setTransferError] = useState('');
   const [currentFileReception, setCurrentFileReception] = useState<FileTransfer | null>(null);
-  const [networkMode, setNetworkMode] = useState<'local' | 'global'>('local');
 
   const peerInstance = useRef<any>(null);
   const reconnectTimeout = useRef<NodeJS.Timeout>();
@@ -274,12 +273,11 @@ export function usePeerConnection() {
 
       // Initialize new peer
       const id = generatePeerId();
-      const config = networkMode === 'local' ? PEER_CONFIG.local : PEER_CONFIG.global;
       
-      console.log('🔧 Initializing PeerJS with config:', config);
+      console.log('🔧 Initializing PeerJS with config:', PEER_CONFIG);
       console.log('🆔 Generated Peer ID:', id);
       
-      peerInstance.current = new Peer(id, config);
+      peerInstance.current = new Peer(id, PEER_CONFIG);
       setMyPeerId(id);
       setConnectionStatus('connecting');
       
@@ -291,7 +289,7 @@ export function usePeerConnection() {
           roomServiceRef.current.cleanup();
         }
         console.log('🏗️ Creating new RoomService');
-        roomServiceRef.current = new RoomService(networkMode);
+        roomServiceRef.current = new RoomService();
         roomServiceRef.current.initialize(id);
       });
 
@@ -332,7 +330,7 @@ export function usePeerConnection() {
       console.error('🔴 Error initializing peer:', error);
       setConnectionStatus('error');
     }
-  }, [networkMode, myPeerId, handleConnection]);
+  }, [myPeerId, handleConnection]);
 
   const handleFileTransfer = useCallback((conn: DataConnection, file: File) => {
     const reader = new FileReader();
@@ -527,7 +525,7 @@ export function usePeerConnection() {
     return () => {
       delete (window as any).debugPeerInfo;
     };
-  }, [myPeerId, peers, networkMode, connectionStatus]);
+  }, [myPeerId, peers, connectionStatus]);
 
   return {
     myPeerId,
@@ -541,8 +539,6 @@ export function usePeerConnection() {
     handleFileTransfer,
     transferError,
     currentFileReception,
-    networkMode,
-    setNetworkMode,
     seenPeers
   };
 }
