@@ -510,6 +510,25 @@ export function usePeerConnection() {
     }
   }, [handleIncomingData]);
 
+  useEffect(() => {
+    // Add debug command to window
+    (window as any).debugPeerInfo = () => {
+      console.log('🔍 Debug Info:');
+      console.log('🆔 My Peer ID:', myPeerId);
+      console.log('👥 Connected Peers:', peers);
+      console.log('👀 Seen Peers:', Array.from(seenPeers.current || new Set()));
+      console.log('🌐 Network Mode:', networkMode);
+      console.log('📡 Connection Status:', connectionStatus);
+      console.log('💾 LocalStorage:', Object.fromEntries(
+        Object.entries(localStorage).filter(([key]) => key.startsWith('peer-'))
+      ));
+    };
+
+    return () => {
+      delete (window as any).debugPeerInfo;
+    };
+  }, [myPeerId, peers, networkMode, connectionStatus]);
+
   return {
     myPeerId,
     peers,

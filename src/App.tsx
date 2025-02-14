@@ -79,8 +79,15 @@ function App() {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-4xl mx-auto p-6">
         <div className="bg-white rounded-lg shadow-lg p-6">
-          <Header peerCount={peers.length} onReconnect={handleReconnect} />
-
+        <Header 
+            peerCount={peers.length} 
+            onReconnect={handleReconnect} 
+            networkMode={networkMode} 
+            onNetworkModeChange={(mode) => {
+              setNetworkMode(mode);
+              initializePeer();
+            }} 
+          />
           <div className="mb-6">
             <div className="flex items-center space-x-2 mb-4">
               <div className="flex-1 flex items-center space-x-2">
@@ -115,7 +122,7 @@ function App() {
                 <button
                   onClick={handleManualConnect}
                   disabled={!targetPeerId || targetPeerId === myPeerId || isConnecting}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
                 >
                   {isConnecting ? (
                     <>
@@ -142,7 +149,7 @@ function App() {
                 />
                 <label
                   htmlFor="file-input"
-                  className="flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer"
+                  className="flex items-center justify-center px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors cursor-pointer"
                 >
                   Choose File
                 </label>
@@ -166,7 +173,9 @@ function App() {
 
           {peers.length > 0 && (
             <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-              <h2 className="text-sm font-medium text-gray-700 mb-2">Connected Peers:</h2>
+              <h2 className="text-sm font-medium text-gray-700 mb-2">
+                Connected {peers.length === 1 ? 'friend' : 'friends'}:
+              </h2>
               <div className="space-y-1">
                 {peers.map((peer) => (
                   <div key={peer.id} className="text-sm text-gray-500">
@@ -285,25 +294,6 @@ function App() {
               </div>
             </div>
           )}
-
-          <div className="mb-4">
-            <button
-              onClick={() => {
-                console.log('🔍 Debug Info:');
-                console.log('🆔 My Peer ID:', myPeerId);
-                console.log('👥 Connected Peers:', peers);
-                console.log('👀 Seen Peers:', Array.from(seenPeers.current || new Set()));
-                console.log('🌐 Network Mode:', networkMode);
-                console.log('📡 Connection Status:', connectionStatus);
-                console.log('💾 LocalStorage:', Object.fromEntries(
-                  Object.entries(localStorage).filter(([key]) => key.startsWith('peer-'))
-                ));
-              }}
-              className="text-sm text-gray-500 hover:text-gray-700"
-            >
-              Debug Info
-            </button>
-          </div>
         </div>
       </div>
     </div>
