@@ -139,8 +139,10 @@ function App() {
               )}
             </div>
 
-            <div className="flex space-x-4">
-              <div className="flex-1">
+            <div className="flex w-full space-x-4">
+              <div className={`${
+                selectedFile ? 'flex-1' : 'w-full'
+              }`}>
                 <input
                   type="file"
                   onChange={handleFileSelect}
@@ -149,7 +151,11 @@ function App() {
                 />
                 <label
                   htmlFor="file-input"
-                  className="flex items-center justify-center px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors cursor-pointer"
+                  className={`block w-full flex items-center justify-center px-4 py-2 ${
+                    selectedFile
+                      ? 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                      : 'bg-blue-500 text-white hover:bg-blue-600'
+                  } rounded-md cursor-pointer`}
                 >
                   Choose File
                 </label>
@@ -157,10 +163,10 @@ function App() {
               {selectedFile && (
                 <button
                   onClick={handleSendFile}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                   disabled={peers.length === 0}
                 >
-                  Send to All Peers
+                  Send to all friends
                 </button>
               )}
             </div>

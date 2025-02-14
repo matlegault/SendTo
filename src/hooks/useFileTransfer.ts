@@ -36,7 +36,9 @@ export function useFileTransfer() {
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      setSelectedFile(file);
+      requestAnimationFrame(() => {
+        setSelectedFile(file);
+      });
     }
   };
 
