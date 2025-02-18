@@ -34,14 +34,21 @@ export function usePeerConnection() {
       return;
     }
 
+    // Check if we already have this peer
+    if (peers.some(p => p.id === conn.peer)) {
+      console.log('🟨 Peer already connected:', conn.peer);
+      try {
+        conn.close();
+      } catch (e) {
+        console.error('Error closing duplicate connection:', e);
+      }
+      return;
+    }
+
     console.log('🟡 Attempting connection with peer:', conn.peer);
 
     try {
-      conn.on('data', (data: any) => {
-        if (typeof window.onPeerData === 'function') {
-          window.onPeerData(data);
-        }
-      });
+      conn.on('data', handleIncomingData);
       
       conn.on('open', () => {
         console.log('🟢 Connection opened with peer:', conn.peer);
@@ -194,11 +201,15 @@ export function usePeerConnection() {
   };
 
   const connectToPeer = (peerId: string) => {
+    // Add lexicographical comparison to determine connection direction
+    const shouldInitiateConnection = myPeerId < peerId;
+    
     if (!peerInstance.current?.open || 
         !peerId || 
         peerId === myPeerId || 
         peers.some(p => p.id === peerId) ||
-        seenPeers.current.has(peerId)) {
+        seenPeers.current.has(peerId) ||
+        !shouldInitiateConnection) {  // Add this condition
       return;
     }
 
@@ -499,14 +510,6 @@ export function usePeerConnection() {
       roomServiceRef.current?.cleanup();
     };
   }, [myPeerId]);
-
-  useEffect(() => {
-    if (peerInstance.current) {
-      peerInstance.current.on('connection', (conn) => {
-        conn.on('data', handleIncomingData);
-      });
-    }
-  }, [handleIncomingData]);
 
   useEffect(() => {
     // Add debug command to window
