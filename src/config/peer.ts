@@ -12,6 +12,7 @@ export const PEER_CONFIG = {
     ],
     iceCandidatePoolSize: 10,
   },
+  key: 'p2p-file-share-app-v1-8a7b9c6d',
   host: '0.peerjs.com',
   secure: true,
   port: 443,
