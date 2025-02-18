@@ -36,36 +36,38 @@ export function Chat({ myPeerId, peers, onSendMessage, messages }: ChatProps) {
   };
 
   return (
-    <div className="flex flex-col h-[400px]">
-      <div className="flex-1 overflow-y-auto px-4 py-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent hover:scrollbar-thumb-gray-400 pb-0">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex ${msg.sender === myPeerId ? 'justify-end' : 'justify-start'} mb-4`}
-          >
+    <div className="flex flex-col h-[400px] relative">
+      <div className="absolute inset-0 overflow-y-auto px-4 py-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent hover:scrollbar-thumb-gray-400">
+        <div className="pb-16">
+          {messages.map((msg) => (
             <div
-              className={`max-w-[80%] rounded-lg px-4 py-2 ${
-                msg.sender === myPeerId
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 text-gray-900'
-              }`}
+              key={msg.id}
+              className={`flex ${msg.sender === myPeerId ? 'justify-end' : 'justify-start'} mb-4`}
             >
-              {msg.sender !== myPeerId && (
-                <p className="text-xs text-gray-500 mb-1">
-                  {msg.sender}
+              <div
+                className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                  msg.sender === myPeerId
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-gray-100 text-gray-900'
+                }`}
+              >
+                {msg.sender !== myPeerId && (
+                  <p className="text-xs text-gray-500 mb-1">
+                    {msg.sender}
+                  </p>
+                )}
+                <p>{msg.text}</p>
+                <p className="text-xs opacity-75 mt-1">
+                  {new Date(msg.timestamp).toLocaleTimeString()}
                 </p>
-              )}
-              <p>{msg.text}</p>
-              <p className="text-xs opacity-75 mt-1">
-                {new Date(msg.timestamp).toLocaleTimeString()}
-              </p>
+              </div>
             </div>
-          </div>
-        ))}
-        <div ref={messagesEndRef} />
+          ))}
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-4 p-4 pt-0">
+      <form onSubmit={handleSubmit} className="sticky bottom-0 mt-auto p-4 bg-white/75 backdrop-blur-sm">
         <div className="flex space-x-2">
           <input
             type="text"
