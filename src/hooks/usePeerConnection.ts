@@ -21,6 +21,12 @@ export function usePeerConnection() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [transferError, setTransferError] = useState('');
   const [currentFileReception, setCurrentFileReception] = useState<FileTransfer | null>(null);
+  const [messages, setMessages] = useState<Array<{
+    id: string;
+    text: string;
+    sender: string;
+    timestamp: number;
+  }>>([]);
 
   const peerInstance = useRef<any>(null);
   const reconnectTimeout = useRef<NodeJS.Timeout>();
@@ -34,15 +40,29 @@ export function usePeerConnection() {
       return;
     }
 
-    // Check if we already have this peer
+    // If we already have this peer, keep the connection with the lower peer ID
     if (peers.some(p => p.id === conn.peer)) {
-      console.log('🟨 Peer already connected:', conn.peer);
-      try {
-        conn.close();
-      } catch (e) {
-        console.error('Error closing duplicate connection:', e);
+      console.log('🟨 Duplicate connection detected:', conn.peer);
+      const shouldKeepNew = myPeerId < conn.peer;
+      
+      if (!shouldKeepNew) {
+        console.log('🔄 Keeping existing connection');
+        try {
+          conn.close();
+        } catch (e) {
+          console.error('Error closing duplicate connection:', e);
+        }
+        return;
+      } else {
+        console.log('🔄 Replacing with new connection');
+        // Close the existing connection
+        const existingPeer = peers.find(p => p.id === conn.peer);
+        try {
+          existingPeer?.connection.close();
+        } catch (e) {
+          console.error('Error closing existing connection:', e);
+        }
       }
-      return;
     }
 
     console.log('🟡 Attempting connection with peer:', conn.peer);
@@ -201,22 +221,19 @@ export function usePeerConnection() {
   };
 
   const connectToPeer = (peerId: string) => {
-    // Add lexicographical comparison to determine connection direction
     const shouldInitiateConnection = myPeerId < peerId;
-    
+
     if (!peerInstance.current?.open || 
         !peerId || 
         peerId === myPeerId || 
         peers.some(p => p.id === peerId) ||
-        seenPeers.current.has(peerId) ||
-        !shouldInitiateConnection) {  // Add this condition
+        !shouldInitiateConnection) {
       return;
     }
 
     setIsConnecting(true);
     setConnectError('');
-    seenPeers.current.add(peerId);
-
+    
     try {
       const conn = peerInstance.current.connect(peerId, {
         reliable: true,
@@ -224,27 +241,7 @@ export function usePeerConnection() {
         metadata: { id: myPeerId }
       });
 
-      const timeout = setTimeout(() => {
-        if (!peers.some(p => p.id === peerId)) {
-          setConnectError('Connection attempt timed out');
-          setIsConnecting(false);
-          try {
-            conn.close();
-          } catch (e) {
-            console.error('Error closing connection:', e);
-          }
-        }
-      }, 5000);
-
       handleConnection(conn);
-
-      conn.on('open', () => {
-        clearTimeout(timeout);
-      });
-
-      conn.on('error', () => {
-        clearTimeout(timeout);
-      });
     } catch (error) {
       console.error('Error connecting to peer:', error);
       setConnectError('Failed to connect to peer');
@@ -407,62 +404,44 @@ export function usePeerConnection() {
   const handleIncomingData = useCallback((data: any) => {
     if (typeof data === 'object' && data.type) {
       switch (data.type) {
-        case 'file-metadata': {
-          // Initialize file reception
-          const fileReception = {
-            name: data.name,
-            size: data.size,
-            type: data.fileType,
-            chunks: [],
-            receivedChunks: 0,
-            totalChunks: Math.ceil(data.size / 16384)
-          };
-          setCurrentFileReception(fileReception);
+        case 'chat-message': {
+          setMessages(prev => [...prev, data.message]);
           break;
         }
-        
-        case 'file-chunk': {
-          setCurrentFileReception(prev => {
-            if (!prev || prev.name !== data.fileName) return prev;
-            
-            const newChunks = [...prev.chunks];
-            newChunks[data.chunkIndex] = data.chunk;
-            
-            return {
-              ...prev,
-              chunks: newChunks,
-              receivedChunks: prev.receivedChunks + 1
-            };
-          });
-          break;
-        }
-        
+        case 'file-metadata':
+        case 'file-chunk':
         case 'file-complete': {
-          setCurrentFileReception(prev => {
-            if (!prev || prev.name !== data.fileName) return prev;
-            
-            // Combine all chunks into a single file
-            const fileBlob = new Blob(prev.chunks, { type: prev.type });
-            
-            // Create download link
-            const url = URL.createObjectURL(fileBlob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = prev.name;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            
-            return null; // Clear the reception state
-          });
+          // Pass file-related messages to the file handler
+          window.onPeerData?.(data);
           break;
         }
-        
-        // ... handle other message types ...
       }
     }
   }, []);
+
+  const sendMessage = useCallback((text: string) => {
+    const message = {
+      id: `${myPeerId}-${Date.now()}`,
+      text,
+      sender: myPeerId,
+      timestamp: Date.now()
+    };
+
+    // Add message to local state
+    setMessages(prev => [...prev, message]);
+
+    // Send to all peers
+    peers.forEach(peer => {
+      try {
+        peer.connection.send({
+          type: 'chat-message',
+          message
+        });
+      } catch (error) {
+        console.error('Error sending message:', error);
+      }
+    });
+  }, [myPeerId, peers]);
 
   useEffect(() => {
     if (!navigator.mediaDevices || !window.RTCPeerConnection) {
@@ -542,6 +521,9 @@ export function usePeerConnection() {
     handleFileTransfer,
     transferError,
     currentFileReception,
-    seenPeers
+    seenPeers,
+    messages,
+    setMessages,
+    sendMessage
   };
 }
