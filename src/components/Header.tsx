@@ -1,6 +1,5 @@
-import { Users, RefreshCw } from 'lucide-react';
+import { Users } from 'lucide-react';
 import { ConnectionStatus } from '../types';
-import { NetworkModeSelector } from './NetworkModeSelector';
 
 interface HeaderProps {
   peerCount: number;
@@ -24,13 +23,6 @@ export function Header({
             {peerCount} connected {peerCount === 1 ? 'friend' : 'friends'}
           </span>
         </div>
-        <button
-          onClick={onReconnect}
-          className="p-2 text-gray-500 hover:text-blue-500 transition-colors rounded-full hover:bg-gray-100"
-          title="Reconnect"
-        >
-          <RefreshCw className="w-5 h-5" />
-        </button>
       </div>
     </div>
   );
