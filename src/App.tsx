@@ -37,7 +37,7 @@ function App() {
     handleIncomingFile,
     sendingFiles,
     setSendingFiles
-  } = useFileTransfer();
+  } = useFileTransfer(myPeerId);
 
   const [targetPeerId, setTargetPeerId] = useState('');
   const [copied, setCopied] = useState(false);

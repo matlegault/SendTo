@@ -26,7 +26,7 @@ interface FileTransfer {
   sending?: boolean;
 }
 
-export function useFileTransfer() {
+export function useFileTransfer(myPeerId: string) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [incomingFiles, setIncomingFiles] = useState<FileTransfer[]>([]);
   const [transferProgress, setTransferProgress] = useState<{ [key: string]: number }>({});
@@ -49,7 +49,7 @@ export function useFileTransfer() {
     setSendingFiles(prev => [...prev, {
       name: selectedFile.name,
       size: selectedFile.size,
-      from: 'me',
+      from: myPeerId,
       accepted: false,
       progress: 0,
       sending: true
@@ -71,7 +71,7 @@ export function useFileTransfer() {
             fileSize: selectedFile.size,
             totalChunks,
             fileType: selectedFile.type,
-            from: peer.connection.peer
+            from: myPeerId
           };
           return peer.connection.send({ type: 'file-metadata', metadata });
         }));
