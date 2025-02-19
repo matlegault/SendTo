@@ -298,7 +298,7 @@ function App() {
               </div>
             )}
           </div>
-          <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+          <div className="bg-white rounded-lg h-[400px] shadow-lg overflow-hidden">
             <Chat
               myPeerId={myPeerId}
               peers={peers}

@@ -36,7 +36,7 @@ export function Chat({ myPeerId, peers, onSendMessage, messages }: ChatProps) {
   };
 
   return (
-    <div className="flex flex-col h-[400px] relative">
+    <div className="flex flex-col h-full relative">
       <div className="absolute inset-0 overflow-y-auto px-4 py-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent hover:scrollbar-thumb-gray-400">
         <div className="pb-16">
           {messages.map((msg) => (
